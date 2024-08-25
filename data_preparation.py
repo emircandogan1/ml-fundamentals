@@ -210,3 +210,31 @@ ax4.set_title('childeren histogram')
 sns.histplot(data=df,x="children",kde=True,ax=ax4)
 save_images('numeric_att_histogram')
 
+# relplot(bu sayede hem scatter,hem line bakılabiliyor)
+fig, ax = plt.subplots(nrows=1,ncols=1,figsize=(20,10))
+sns.boxplot(data=df,x="charges",y="region",hue="sex",width=.5)
+ax.set_title("region_charges_boxplot")
+save_images("region_charges_boxplot")
+plt.show()
+
+df.groupby(["region","sex"])["charges"].median()
+df.groupby(["region","sex"])["charges"].min()
+df.groupby(["region","sex"])["charges"].max()
+df.groupby(["region","sex"])["charges"].quantile([0.25, 0.5, 0.75])
+
+fig, ax = plt.subplots(nrows=1,ncols=1,figsize=(20,6))
+sns.boxplot(data=df,x="charges",y="smoker",hue="sex",width=.5)
+ax.set_title("Charges/Smoker boxplot")
+plt.show()
+save_images("charges_smoker_boxplot")
+
+# correlation heatmap
+corr = df[["age","bmi","children","charges"]].corr()
+mask = np.triu(corr.corr())
+
+fig, ax = plt.subplots(figsize=(20,5))
+cmap = sns.diverging_palette(230,20,as_cmap=True)
+sns.heatmap(data=corr,mask=mask,annot=True,fmt=".2f",cmap="coolwarm",linewidths=1)
+ax.set_title("Correlation Between Variables")
+save_images("corr_variables")
+plt.show()
