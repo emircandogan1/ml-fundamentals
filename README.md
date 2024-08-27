@@ -1,7 +1,7 @@
 # ml fundamentals
 This repository indicates ml fundamentals with basic codes. You can use this line of codes in your ML projects. 
 
-# main idea
+## main idea
 Main idea is predict medical cost ("charges") in the dataset with ml models and gain insights about dataset.
 
 ## dataset
