@@ -28,13 +28,17 @@ from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 
 # promise models 
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import mean_squared_error, root_mean_squared_error
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import SVR, NuSVR
 
 # fine-tune your model 
 from sklearn.model_selection import GridSearchCV
+
+# evaluate system 
+from scipy import stats
+import joblib
 
 np.random.seed(seed=82)
 
@@ -381,3 +385,23 @@ full_pipe = Pipeline([
 ])
 
 svr_reg.feature_importances_
+
+# evaluate with test set
+X_test = strat_test_set.drop("charges",axis=1)
+y_test = strat_test_set["charges"].copy()
+
+final_pred = forest_reg.predict(X_test)
+final_rmse = mean_squared_error(y_test,final_pred,squared=False)
+print(final_rmse)
+
+# confidence interval %95 
+confidence = 0.95 
+squared_errors = (final_pred-y_test)**2
+np.sqrt(stats.t.interval(confidence,len(squared_errors)-1,loc=squared_errors.mean(),scale=stats.sem(squared_errors)))
+
+# model saving 
+joblib.dump(forest_reg,"cost_insurance.pkl")
+
+model_reloaded = joblib.load("cost_insurance.pkl")
+new_data = df.iloc[:10]
+predictoins = model_reloaded.predict(new_data)
