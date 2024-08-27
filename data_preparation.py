@@ -9,12 +9,32 @@ import tarfile
 import urllib.request
 from pathlib import Path
 from zlib import crc32
-from sklearn.model_selection import train_test_split,StratifiedShuffleSplit
+from sklearn.model_selection import train_test_split,StratifiedShuffleSplit,cross_val_score
 from scipy.stats import binom
 
 # explore data
 import matplotlib.gridspec as gridspec
-import seaborn as sns 
+import seaborn as sns
+from pandas.plotting import scatter_matrix
+
+# prepare data
+from sklearn.ensemble import IsolationForest # not used (for outliers (optional))
+from sklearn.preprocessing import OrdinalEncoder # not used (for similarity)
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import FunctionTransformer
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+
+# promise models 
+from sklearn.metrics import root_mean_squared_error
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR, NuSVR
+
+# fine-tune your model 
+from sklearn.model_selection import GridSearchCV
 
 np.random.seed(seed=82)
 
@@ -238,3 +258,126 @@ sns.heatmap(data=corr,mask=mask,annot=True,fmt=".2f",cmap="coolwarm",linewidths=
 ax.set_title("Correlation Between Variables")
 save_images("corr_variables")
 plt.show()
+
+# pandas correlation 
+scatter_matrix(frame=df,alpha=0.5,figsize=(20,10))
+save_images('scatter matrix for correlation')
+
+# attribute combination 
+df["charges_per_child"] = df["charges"] / df["children"]
+df["age_bmi"] = df["age"]*df["bmi"]
+
+## PREPARE DATA ##
+df = strat_train_set.drop("charges",axis=1)
+df_target = strat_train_set["charges"].copy()
+
+# categorical to numeric
+df_cats = df[["sex","smoker","region"]]
+encoder = OneHotEncoder(sparse_output=False)
+df_cat_hot = encoder.fit_transform(df_cats)
+df_cat_hot[:8]
+encoder.categories_
+encoder.feature_names_in_
+encoder.get_feature_names_out()
+
+# scaling with standard
+df_num = df[["age","bmi","children"]]
+scaler = StandardScaler()
+df_num_scaled = scaler.fit_transform(df_num)
+
+# scaling target (and inverse transform)
+target_log = np.log(df_target)
+model = LinearRegression()
+model.fit(df[["bmi"]], target_log)
+new_data = df[["bmi"]].iloc[:5]
+
+predicts = model.predict(new_data)
+predictions = np.exp(predicts)
+
+# custom transformer
+log_transformer = FunctionTransformer(np.log, inverse_func=np.exp)
+log_pop = log_transformer.transform(df_target)
+
+# pipeline 
+num_pipe = make_pipeline(
+    SimpleImputer(strategy="median"),
+    StandardScaler()
+)
+
+num_prepared = num_pipe.fit_transform(df_num)
+df_num_prepared = pd.DataFrame(num_prepared,columns=num_pipe.get_feature_names_out(),index=df_num.index)
+num_pipe.steps
+
+# categorical and numerical pipeline 
+num_att = ["age","bmi","children"]
+cat_att = ["sex","smoker","region"]
+
+cat_pipe = make_pipeline(
+    OneHotEncoder()
+)
+
+preprocessing = ColumnTransformer([
+    ("numeric",num_pipe,num_att),
+    ("categoic",cat_pipe,cat_att)
+])
+
+df_prepared = preprocessing.fit_transform(df)
+df_prepared.shape
+preprocessing.get_feature_names_out()
+
+### PROMISING MODELS ###
+# linear regression
+lin_reg = make_pipeline(preprocessing,LinearRegression())
+lin_rmses = -cross_val_score(lin_reg,X=df,y=df_target,scoring="neg_root_mean_squared_error",cv=10)
+pd.Series(lin_rmses).describe()
+
+
+lin_reg.fit(df,df_target)
+
+predictions_cost = lin_reg.predict(df)
+predictions_cost[:5].round(-2)
+df_target.iloc[:5].values
+
+lin_rmse = root_mean_squared_error(df_target,predictions_cost)
+
+# decision tree
+tree_reg = make_pipeline(preprocessing,DecisionTreeRegressor(random_state=82))
+tree_reg.fit(df,df_target)
+tree_predictions = tree_reg.predict(df)
+tree_rmse = root_mean_squared_error(df_target,tree_predictions)
+
+# cross val score decision tree
+tree_rmses = -cross_val_score(estimator=tree_reg,X=df,y=df_target,scoring="neg_root_mean_squared_error",cv=10)
+pd.Series(tree_rmses).describe()
+
+lin_rmses = -cross_val_score(estimator=lin_reg,X=df,y=df_target,scoring="neg_root_mean_squared_error",cv=10)
+pd.Series(lin_rmses).describe()
+
+# random forest model 
+forest_reg = make_pipeline(preprocessing,RandomForestRegressor(random_state=82))
+forest_rmses = -cross_val_score(forest_reg,X=df,y=df_target,scoring="neg_root_mean_squared_error",cv=10)
+pd.Series(forest_rmses).describe()
+
+forest_reg.fit(df,df_target)
+forest_pred = forest_reg.predict(df)
+forest_pred[:5].round(-2)
+df_target.iloc[:5].values
+forest_rmses = root_mean_squared_error(df_target,forest_pred)
+
+# randomforest, linear reg, decision tree, svr last (model evaluation) !!! 
+# training error lower than validation error, so there is a model overfitting
+svr_reg = make_pipeline(preprocessing,NuSVR(kernel="sigmoid",nu=0.9))
+svr_reg.fit(df,df_target)
+svr_predicts = svr_reg.predict(df)
+rmse_svr = root_mean_squared_error(df_target,svr_predicts)
+
+svr_rmses = -cross_val_score(svr_reg,X=df,y=df_target,scoring="neg_root_mean_squared_error",cv=10)
+pd.Series(svr_rmses).describe()
+
+### TUNE MODEL ### 
+full_pipe = Pipeline([
+    ("preprocessing",preprocessing),
+    ("random_forest",RandomForestRegressor(random_state=82))
+])
+
+svr_reg.feature_importances_
